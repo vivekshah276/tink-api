@@ -3,6 +3,7 @@ import bodyParser from "body-parser";
 import config from "./config";
 import sequelize from "./utils/db"
 import tinkRoutes from "./routes/tinkRoutes"
+import "./jobs/renewalNotifier"; // ⬅️ Cron will now be scheduled at startup
 
 const app = express();
 

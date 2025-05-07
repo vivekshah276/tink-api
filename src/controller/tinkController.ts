@@ -2,6 +2,67 @@ import { Request, Response } from "express";
 import config from "../config";
 import { URLSearchParams } from "url";
 import axios from "axios";
+import nodemailer from "nodemailer";
+import { Subscription } from "../models/subscription";
+import { Op } from "sequelize";
+
+
+const transporter = nodemailer.createTransport({
+  host: config.email_host,
+  port: config.email_port,
+  auth: {
+    user: config.email_auth_user,
+    pass: config.email_auth_pass,
+  },
+});
+
+const sendRenewalEmail = async (to: any, subscription: any) => {
+  const mailOptions = {
+    from: '"SubNotify" <no-reply@example.com>',
+    to,
+    subject: "Upcoming Subscription Renewal",
+    text: `Hi, your subscription to ${subscription.description} for ${
+      subscription.amount
+    } ${subscription.currencyCode} renews on ${new Date(
+      subscription.nextExpectedDate
+    ).toDateString()}.`,
+  };
+
+  const info = await transporter.sendMail(mailOptions);
+  console.log("✅ Sent email:", info.messageId);
+  console.log("🔗 Preview:", nodemailer.getTestMessageUrl(info));
+};
+
+
+export const checkUpcomingRenewals = async () => {
+  const now = new Date();
+  const in3Days = new Date();
+  in3Days.setDate(now.getDate() + 3);
+
+  try {
+    const subscriptions = await Subscription.findAll({
+      where: {
+        nextExpectedDate: {
+          [Op.between]: [now, in3Days], // Renewing within 3 days
+        },
+        lastNotified: {
+          [Op.is]: null, // Only send if never notified
+        },
+      },
+    });
+
+    for (const subscription of subscriptions) {
+      await sendRenewalEmail(subscription.email, subscription);
+      subscription.lastNotified = now;
+      await subscription.save(); // Mark as notified to prevent resending
+    }
+
+    return subscriptions.length;
+  } catch (error) {
+    console.error("Error while fetching subscriptions or sending emails:", error);
+    throw error;
+  }
+};
 
 interface TokenResponse {
   access_token: string;
